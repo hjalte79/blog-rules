@@ -1,0 +1,85 @@
+﻿Public Class ThisRule
+	' Compare Part Geometry
+    ' Code written by: Jelte de Jong
+    ' http://www.hjalte.nl/20-compare-part-geometry-with-ilogic
+    Sub Main()
+
+        Dim partName1 As String = getFileName()
+        Dim partName2 As String = getFileName()
+
+        Dim added As String = createDiff(partName2, partName1, True)
+        Dim substarcted As String = createDiff(partName1, partName2, False)
+
+        Dim doc As PartDocument = ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject)
+
+
+        Dim derivedPartComponents = doc.ComponentDefinition.ReferenceComponents.DerivedPartComponents
+        Dim derivedPartDef As DerivedPartUniformScaleDef
+        derivedPartDef = derivedPartComponents.CreateUniformScaleDef(added)
+        derivedPartComponents.Add(derivedPartDef)
+
+        derivedPartDef = derivedPartComponents.CreateUniformScaleDef(substarcted)
+        derivedPartComponents.Add(derivedPartDef)
+    End Sub
+
+    Public Function createDiff(fileName1 As String, fileName2 As String, isAdded As Boolean) As String
+        Dim doc As PartDocument = ThisApplication.Documents.Open(fileName1, True)
+        Dim fileInfo As IO.FileInfo = New IO.FileInfo(doc.FullFileName)
+        Dim newFileName = IO.Path.Combine(
+            fileInfo.DirectoryName,
+            fileInfo.Name.Replace(fileInfo.Extension, "") +
+            "_dif" +
+            fileInfo.Extension)
+        doc.SaveAs(newFileName, False)
+
+
+        Dim derivedPartDef As DerivedPartUniformScaleDef
+        derivedPartDef = doc.ComponentDefinition.ReferenceComponents.DerivedPartComponents.CreateUniformScaleDef(fileName2)
+
+        derivedPartDef.BodyAsSolidBody = False
+
+        Dim derivedPart As DerivedPartComponent
+        derivedPart = doc.ComponentDefinition.ReferenceComponents.DerivedPartComponents.Add(derivedPartDef)
+        derivedPart.BreakLinkToFile()
+
+        Dim splitTool As SurfaceBody = doc.ComponentDefinition.WorkSurfaces.Item(1)._SurfaceBody
+        splitTool.Visible = False
+
+        Dim body As SurfaceBody = doc.ComponentDefinition.SurfaceBodies.Item(1)
+        Try
+            doc.ComponentDefinition.Features.SplitFeatures.TrimSolid(splitTool, body, False)
+        Catch ex As Exception
+            doc.ComponentDefinition.Features.SplitFeatures.TrimSolid(splitTool, body, True)
+        End Try
+
+        If (isAdded) Then
+            doc.ActiveRenderStyle = doc.RenderStyles.Item("Green")
+        Else
+            doc.ActiveRenderStyle = doc.RenderStyles.Item("Smooth - Red")
+        End If
+
+        ThisApplication.ActiveView.Update()
+
+        doc.Save()
+        doc.Close(True)
+        Return newFileName
+    End Function
+
+    Private Function getFileName() As String
+
+        Dim activeProject = ThisApplication.DesignProjectManager.ActiveDesignProject
+
+        Dim fd As System.Windows.Forms.OpenFileDialog = New System.Windows.Forms.OpenFileDialog()
+        fd.Title = "Select part file"
+        fd.InitialDirectory = activeProject.WorkspacePath
+        fd.Filter = "All files (*.*)|*.*|Part file (*.ipt)|*.ipt"
+        fd.FilterIndex = 2
+        fd.RestoreDirectory = True
+
+        If fd.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
+            Return fd.FileName
+        Else
+            Throw New Exception("None file selected for diff")
+        End If
+    End Function
+End Class
